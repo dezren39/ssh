@@ -82,6 +82,13 @@ type Session interface {
 	// the request handling loop. Registering nil will unregister the channel.
 	// During the time that no channel is registered, breaks are ignored.
 	Break(c chan<- bool)
+
+	// DisablePtyEmulation disables the session from emulating a pty when a pty
+	// is requested. If you're allocating a pty for the session, you should
+	// call this method to disable the pty emulation before any call to Write.
+	// This affects the behavior of Stderr() and Write and stops them from
+	// translating NL -> CRNL (`\n` -> `\r\n`).
+	DisablePtyEmulation()
 }
 
 // maxSigBufSize is how many signals will be buffered
@@ -125,17 +132,22 @@ type session struct {
 	sigCh             chan<- Signal
 	sigBuf            []Signal
 	breakCh           chan<- bool
+	disablePtyEmu     bool
+}
+
+func (sess *session) DisablePtyEmulation() {
+	sess.disablePtyEmu = true
 }
 
 func (sess *session) Stderr() io.ReadWriter {
-	if sess.pty != nil {
+	if sess.pty != nil && !sess.disablePtyEmu {
 		return NewPtyReadWriter(sess.Channel.Stderr())
 	}
 	return sess.Channel.Stderr()
 }
 
 func (sess *session) Write(p []byte) (int, error) {
-	if sess.pty != nil {
+	if sess.pty != nil && !sess.disablePtyEmu {
 		return NewPtyWriter(sess.Channel).Write(p)
 	}
 	return sess.Channel.Write(p)
