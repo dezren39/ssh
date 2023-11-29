@@ -3,6 +3,8 @@ package ssh
 import (
 	"bytes"
 	"io"
+
+	"github.com/aymanbagabas/go-pty"
 )
 
 // NewPtyWriter creates a writer that handles when the session has a active
@@ -54,4 +56,24 @@ func (rw readWriterDelegate) Read(p []byte) (n int, err error) {
 
 func (rw readWriterDelegate) Write(p []byte) (n int, err error) {
 	return rw.w.Write(p)
+}
+
+// allocate is a helper function to allocate a pty session.
+// It returns a Pty object that can be used to run a command on a tty.
+// If this fails, use NewPtyReadWriter to _emulate_ a tty.
+func (p *Pty) allocate() error {
+	tty, err := pty.New()
+	if err != nil {
+		return err
+	}
+
+	p.Pty = tty
+
+	if err := pty.ApplyTerminalModes(int(tty.Fd()),
+		p.Window.Width, p.Window.Height, p.Modes,
+	); err != nil {
+		return err
+	}
+
+	return nil
 }

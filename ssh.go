@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"net"
 
+	"github.com/aymanbagabas/go-pty"
 	gossh "golang.org/x/crypto/ssh"
 )
 
@@ -91,6 +92,14 @@ type Window struct {
 
 // Pty represents a PTY request and configuration.
 type Pty struct {
+	// If this is true, the server will emulate a "fake" Pty by using
+	// PtyWriter.
+	emulate bool
+
+	// Pty is the actual pty allocated. It is nil if the request did not
+	// allocated a pty.
+	pty.Pty
+
 	// Term is the TERM environment variable value.
 	Term string
 

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"sync"
 
@@ -128,14 +129,14 @@ type session struct {
 }
 
 func (sess *session) Stderr() io.ReadWriter {
-	if sess.pty != nil {
+	if sess.pty != nil && sess.pty.emulate {
 		return NewPtyReadWriter(sess.Channel.Stderr())
 	}
 	return sess.Channel.Stderr()
 }
 
 func (sess *session) Write(p []byte) (int, error) {
-	if sess.pty != nil {
+	if sess.pty != nil && sess.pty.emulate {
 		return NewPtyWriter(sess.Channel).Write(p)
 	}
 	return sess.Channel.Write(p)
@@ -331,6 +332,21 @@ func (sess *session) handleRequests(reqs <-chan *gossh.Request) {
 					continue
 				}
 			}
+			if err := ptyReq.allocate(); err != nil {
+				req.Reply(false, nil)
+				continue
+			}
+			if ptyReq.Pty != nil {
+				log.Printf("pty allocated: %s", ptyReq.Pty.Name())
+				sess.env = append(sess.env,
+					fmt.Sprintf("TERM=%s", ptyReq.Term),
+					fmt.Sprintf("SSH_TTY=%s", ptyReq.Pty.Name()),
+				)
+				// input to pty
+				go io.Copy(ptyReq.Pty, sess) // nolint: errcheck
+				// pty to output
+				go io.Copy(sess, ptyReq.Pty) // nolint: errcheck
+			}
 			sess.pty = &ptyReq
 			sess.winch = make(chan Window, 1)
 			sess.winch <- ptyReq.Window
@@ -348,6 +364,9 @@ func (sess *session) handleRequests(reqs <-chan *gossh.Request) {
 			if ok {
 				sess.pty.Window = win
 				sess.winch <- win
+				if sess.pty.Pty != nil {
+					sess.pty.Pty.Resize(win.Width, win.Height)
+				}
 			}
 			req.Reply(ok, nil)
 		case agentRequestType:

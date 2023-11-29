@@ -82,3 +82,27 @@ func WrapConn(fn ConnCallback) Option {
 		return nil
 	}
 }
+
+// EmulatePty returns a functional option that sets PtyCallback on the server
+// to emulate a "fake" PTY by using PtyWriter.
+func EmulatePty() Option {
+	return func(srv *Server) error {
+		srv.PtyCallback = func(_ Context, pty Pty) bool {
+			pty.emulate = true
+			return true
+		}
+		return nil
+	}
+}
+
+// AllocatePty returns a functional option that sets PtyCallback on the server
+// to allocate a PTY for sessions that request it.
+func AllocatePty() Option {
+	return func(srv *Server) error {
+		srv.PtyCallback = func(_ Context, pty Pty) bool {
+			err := pty.allocate()
+			return err == nil
+		}
+		return nil
+	}
+}
