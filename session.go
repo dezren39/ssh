@@ -333,6 +333,7 @@ func (sess *session) handleRequests(reqs <-chan *gossh.Request) {
 				}
 			}
 			if err := ptyReq.allocate(); err != nil {
+				log.Printf("pty allocation failed: %s", err)
 				req.Reply(false, nil)
 				continue
 			}
@@ -353,6 +354,9 @@ func (sess *session) handleRequests(reqs <-chan *gossh.Request) {
 			defer func() {
 				// when reqs is closed
 				close(sess.winch)
+				if sess.pty != nil && sess.pty.Pty != nil {
+					sess.pty.Pty.Close()
+				}
 			}()
 			req.Reply(ok, nil)
 		case "window-change":
@@ -360,12 +364,16 @@ func (sess *session) handleRequests(reqs <-chan *gossh.Request) {
 				req.Reply(false, nil)
 				continue
 			}
+			log.Printf("window change: %s", req.Payload)
 			win, _, ok := parseWindow(req.Payload)
 			if ok {
 				sess.pty.Window = win
 				sess.winch <- win
 				if sess.pty.Pty != nil {
-					sess.pty.Pty.Resize(win.Width, win.Height)
+					log.Printf("resizing pty: %dx%d", win.Width, win.Height)
+					if err := sess.pty.Pty.Resize(win.Width, win.Height); err != nil {
+						log.Printf("failed to resize pty: %s", err)
+					}
 				}
 			}
 			req.Reply(ok, nil)
